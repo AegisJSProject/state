@@ -111,6 +111,10 @@ export function deleteState(key) {
 	replaceState(state, location.href);
 };
 
+export const saveState = (key = 'aegis:state') => localStorage.setItem(key, JSON.stringify(getStateObj()));
+
+export const restoreState = (key = 'aegis:state') => _updateState(JSON.parse(localStorage.getItem(key)), location.href);
+
 export const clearState = () => replaceState({}, location.href);
 
 export function replaceState(state = getStateObj(), url = location.href) {

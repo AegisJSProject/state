@@ -1,4 +1,4 @@
-import { observeStateChanges, unobserveStateChanges, manageState, watchState } from '@aegisjsproject/state';
+import { observeStateChanges, unobserveStateChanges, manageState, watchState, saveState } from '@aegisjsproject/state';
 import { html } from '@aegisjsproject/core/parsers/html.js';
 import { AegisComponent } from '@aegisjsproject/component/base.js';
 import { SYMBOLS, TRIGGERS } from '@aegisjsproject/component/consts.js';
@@ -8,8 +8,10 @@ import { EVENTS } from '@aegisjsproject/core/events.js';
 const STATE_CHANGED = 'aegis:state:changed';
 
 const [msg, setMessage] = manageState('msg', 'Hello, World!');
-const [list, setList] = manageState('list', ['one', 'two', 'three']);
+const [list] = manageState('list', ['one', 'two', 'three']);
 const updateMessage = registerCallback('update:msg', ({ target }) => setMessage(target.value));
+
+
 
 class StatefulElemenet extends AegisComponent {
 	constructor() {
@@ -48,6 +50,8 @@ class StatefulElemenet extends AegisComponent {
 				break;
 
 			case STATE_CHANGED:
+				saveState();
+
 				if (diff.includes('msg')) {
 					shadow.getElementById('msg').textContent = state.msg;
 					const input = shadow.getElementById('msg-input');
