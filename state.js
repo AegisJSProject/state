@@ -1,7 +1,10 @@
 const stateRegistry = new Set();
 const channel = new BroadcastChannel('aegis:state_sync');
 const sender = crypto.randomUUID();
+const proxySymbol = Symbol('proxy');
 let isChannelOpen = true;
+
+const _getState = (key, fallback) => history.state?.[key] ?? fallback;
 
 function _getStateMessage(type, recipient, data = {}) {
 	return {
@@ -35,7 +38,7 @@ export function diffState(newState, oldState = getStateObj()) {
 		const newKeys = Object.keys(newState);
 		const addedKeys = newKeys.filter(key => ! oldKeys.includes(key));
 		const removedKeys = oldKeys.filter(key => ! newKeys.includes(key));
-		const changedKeys = oldKeys.filter(key => newState[key] !== oldState[key]);
+		const changedKeys = oldKeys.filter(key => key in newState && key in oldState && newState[key] !== oldState[key]);
 
 		return Object.freeze([...addedKeys, ...changedKeys, ...removedKeys]);
 	} else {
@@ -68,41 +71,103 @@ export function observeStateChanges(target, ...observedStates) {
 	}
 };
 
+export function getState(key, fallback = null) {
+	return new Proxy({
+		toString() {
+			return _getState(key, fallback).toString();
+		},
+		valueOf() {
+			const val = _getState(key, fallback);
+			return val?.valueOf instanceof Function ? val.valueOf() : val;
+		},
+		[Symbol.toPrimitive](hint) {
+			const val = _getState(key, fallback);
+			return val?.[Symbol.toPrimitive] instanceof Function ? val[Symbol.toPrimitive](hint) : val;
+		},
+		[proxySymbol]: true,
+		[Symbol.toStringTag]: 'StateValue',
+		[Symbol.iterator]() {
+			return _getState(key, fallback)?.[Symbol.iterator]();
+		},
+	}, {
+		defineProperty(target, prop, attributes) {
+			const val = _getState(key, fallback);
+
+			if (Reflect.defineProperty(val, prop, attributes)) {
+				setState(key, val);
+				return val;
+			} else {
+				return false;
+			}
+		},
+		deleteProperty(target, prop) {
+			return Reflect.deleteProperty(_getState(key, fallback), prop);
+		},
+		get(target, prop) {
+			const val = _getState(key, fallback);
+
+			if (prop in target) {
+				return target[prop];
+			} else if (typeof val === 'object') {
+				const result = Reflect.get(val, prop, val);
+				return result instanceof Function ? result.bind(val) : result;
+			} else {
+				return val[prop];
+			}
+		},
+		getOwnPropertyDescriptor(target, prop) {
+			return Reflect.getOwnPropertyDescriptor(_getState(key, fallback), prop);
+		},
+		getPrototypeOf() {
+			const val = _getState(key, fallback);
+			return typeof val === 'object' ? Reflect.getPrototypeOf(val) : Object.getPrototypeOf(val);
+		},
+		has(target, prop) {
+			return Reflect.has(_getState(key, fallback), prop);
+		},
+		isExtensible() {
+			return Reflect.isExtensible(_getState(key, fallback));
+		},
+		ownKeys() {
+			return Reflect.ownKeys(_getState(key, fallback));
+		},
+		preventExtensions() {
+			return Reflect.preventExtensions(_getState(key, fallback));
+		},
+		set(target, prop, newValue) {
+			const val = _getState(key, fallback);
+
+			if (Reflect.set(val, prop, newValue, val)) {
+				setState(key, val);
+				return true;
+			} else {
+				return false;
+			}
+		}
+	});
+}
+
 export const unobserveStateChanges = target => stateRegistry.delete(target);
 
 export const getStateObj = () => Object.freeze(history.state === null ? {} : structuredClone(history.state));
 
 export const hasState = key => key in getStateObj();
 
-export const getState = (key = '', fallback = null) => getStateObj()[key] ?? fallback;
-
-export const setState = (prop, value) => Promise.resolve(value).then(val => {
+export function setState(prop, value) {
 	const state = getStateObj();
 
-	if (state[prop] !== val) {
-		replaceState({ ...getStateObj(), [prop]: val }, '', location.href);
+	if (state[prop] !== value) {
+		replaceState({ ...getStateObj(), [prop]: value?.[proxySymbol] ? value.valueOf() : value }, '', location.href);
 	}
-});
+};
 
-export const updateState = async (key, cb) => Promise.try(() => cb(getState(key))).then(async val => {
-	await setState(key, val);
+export const updateState = async (key, cb) => await Promise.try(() => cb(_getState(key))).then(val => {
+	setState(key, val);
 	return val;
 });
 
 export function manageState(key, initialValue = null) {
-	return [
-		Object.freeze({
-			toString: () => getState(key, initialValue).toString(),
-			valueOf: () => getState(key, initialValue),
-			[Symbol.toPrimitive]: () => getState(key, initialValue),
-			[Symbol.toStringTag]: 'StateValue',
-			get [Symbol.iterator]() {
-				const val = getState(key, initialValue);
-				return getState(key, initialValue)[Symbol.iterator];
-			},
-		}),
-		newVal => setState(key, newVal)
-	];
+	return [getState(key, initialValue), newVal => setState(key, newVal)];
 };
 
 export function deleteState(key) {
@@ -155,7 +220,7 @@ export function watchState({ signal } = {}) {
 						break;
 
 					default:
-						console.error(`Unhandled broadcast channel message type: ${event.data.type}`);
+						reportError(new Error(`Unhandled broadcast channel message type: ${event.data.type}`));
 				}
 			}
 		}
