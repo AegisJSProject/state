@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.1] - 2024-10-21
+
+### Changed
+- `getState` now returns a `Proxy` object for the value (reflected in `manageState`)
+- `setState` is no longer async
+
 ## [v1.0.0] - 2024-10-13
 
 Initial Release

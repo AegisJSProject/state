@@ -11,8 +11,6 @@ const [msg, setMessage] = manageState('msg', 'Hello, World!');
 const [list] = manageState('list', ['one', 'two', 'three']);
 const updateMessage = registerCallback('update:msg', ({ target }) => setMessage(target.value));
 
-
-
 class StatefulElemenet extends AegisComponent {
 	constructor() {
 		super({
@@ -76,8 +74,6 @@ class StatefulElemenet extends AegisComponent {
 				break;
 		}
 	}
-
-
 }
 
 StatefulElemenet.register('stateful-el');
