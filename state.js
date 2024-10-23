@@ -4,7 +4,7 @@ const sender = crypto.randomUUID();
 const proxySymbol = Symbol('proxy');
 let isChannelOpen = true;
 
-const _getState = (key, fallback) => history.state?.[key] ?? fallback;
+const _getState = (key, fallback = null) => history.state?.[key] ?? fallback;
 
 function _getStateMessage(type, recipient, data = {}) {
 	return {
@@ -25,6 +25,9 @@ function _updateState(state = getStateObj(), url = location.href) {
 	}
 }
 
+/**
+ * Closes the broadcast channel if it's currently open. This will stop syncing between browsing contexts (tabs/windows/iframes)
+ */
 export function closeChannel() {
 	if (isChannelOpen) {
 		channel.close();
@@ -32,6 +35,13 @@ export function closeChannel() {
 	}
 }
 
+/**
+ * Calculates the difference between two state objects.
+ *
+ * @param {object} newState - The new state object.
+ * @param {object} [oldState] - The old state object. Defaults to the current state object.
+ * @returns {string[]} - An array of keys representing the added, removed, or changed properties.
+ */
 export function diffState(newState, oldState = getStateObj()) {
 	if (oldState !== newState) {
 		const oldKeys = Object.keys(oldState);
@@ -46,6 +56,12 @@ export function diffState(newState, oldState = getStateObj()) {
 	}
 }
 
+/**
+ * Notifies registered state change callbacks about changes in the state object.
+ *
+ * @param {string[]} diff - An array of keys representing the added, removed, or changed properties.
+ * @returns {Promise<object[]>} - A promise that resolves to an array of settlement objects, one for each callback invocation.
+ */
 export async function notifyStateChange(diff) {
 	if (Array.isArray(diff) && diff.length !== 0) {
 		const currState = getStateObj();
@@ -62,6 +78,13 @@ export async function notifyStateChange(diff) {
 	}
 }
 
+/**
+ * Registers a callback function to be notified of state changes.
+ *
+ * @param {Function} target - The callback function to register.
+ * @param {string[]} observedStates - An array of state keys to observe.
+ * @returns {boolean} - True if the callback was successfully registered, false otherwise.
+ */
 export function observeStateChanges(target, ...observedStates) {
 	if (target instanceof Function && ! stateRegistry.has(target)) {
 		stateRegistry.add({ callback: target, observedStates });
@@ -71,6 +94,13 @@ export function observeStateChanges(target, ...observedStates) {
 	}
 };
 
+/**
+ * Gets a state value associated with a given key, providing a proxy object for reactive access and modification.
+ *
+ * @param {string} key - The key of the state value to retrieve.
+ * @param {*} [fallback=null] - The fallback value to return if the state value is undefined or null.
+ * @returns {ProxyHandler} - A proxy object representing the state value.
+ */
 export function getState(key, fallback = null) {
 	return new Proxy({
 		toString() {
@@ -147,12 +177,35 @@ export function getState(key, fallback = null) {
 	});
 }
 
+/**
+ * Unregisters a callback function from being notified of state changes.
+ *
+ * @param {Function} target - The callback function to unregister.
+ * @returns {boolean} - True if the callback was successfully unregistered, false otherwise.
+ */
 export const unobserveStateChanges = target => stateRegistry.delete(target);
 
+/**
+ * Gets the current state object from the history.
+ *
+ * @returns {object} - A frozen copy of the current state object.
+ */
 export const getStateObj = () => Object.freeze(history.state === null ? {} : structuredClone(history.state));
 
+/**
+ * Checks if a state key exists in the current state object.
+ *
+ * @param {string} key - The key to check for.
+ * @returns {boolean} - True if the key exists, false otherwise.
+ */
 export const hasState = key => key in getStateObj();
 
+/**
+ * Sets a state value.
+ *
+ * @param {string} prop - The property name to set.
+ * @param {*} value - The new value for the property.
+ */
 export function setState(prop, value) {
 	const state = getStateObj();
 
@@ -161,27 +214,66 @@ export function setState(prop, value) {
 	}
 };
 
+/**
+ * Updates a state value asynchronously.
+ *
+ * @param {string} key - The key of the state value to update.
+ * @param {Function} cb - The callback function to update the value.
+ * @returns {Promise<*>} - A promise that resolves to the updated state value.
+ */
 export const updateState = async (key, cb) => await Promise.try(() => cb(_getState(key))).then(val => {
 	setState(key, val);
 	return val;
 });
 
+/**
+ * Manages a state value, providing a getter and setter functions.
+ *
+ * @param {string} key - The key of the state value.
+ * @param {*} [initialValue=null] - The initial value for the state value.
+ * @returns {[ProxyHandler, Function]} - An array containing the getter and setter functions. The first function returns a proxy object representing the state value, and the second function is used to update the value.
+ */
 export function manageState(key, initialValue = null) {
 	return [getState(key, initialValue), newVal => setState(key, newVal)];
 };
 
+/**
+ * Deletes a state value.
+ *
+ * @param {string} key - The key of the state value to delete.
+ */
 export function deleteState(key) {
 	const state = { ...getStateObj() };
 	delete state[key];
 	replaceState(state, location.href);
 };
 
+/**
+ * Saves the current state object to local storage.
+ *
+ * @param {string} [key="aegis:state"] - The key to use for storing the state in local storage.
+ */
 export const saveState = (key = 'aegis:state') => localStorage.setItem(key, JSON.stringify(getStateObj()));
 
+/**
+ * Restores the state object from local storage.
+ *
+ * @param {string} [key="aegis:state"] - The key used for storing the state in local storage.
+ */
 export const restoreState = (key = 'aegis:state') => _updateState(JSON.parse(localStorage.getItem(key)), location.href);
 
+/**
+ * Clears the current state object.
+ */
 export const clearState = () => replaceState({}, location.href);
 
+/**
+ * Replaces the current state object with the given state and updates the URL.
+ *
+ * @param {Object} state - The new state object.
+ * @param {string} url - The new URL.
+ * @returns {boolean} - True if the state was successfully replaced, false otherwise.
+ */
 export function replaceState(state = getStateObj(), url = location.href) {
 	if (_updateState(state, url)) {
 		if (isChannelOpen) {
@@ -190,6 +282,12 @@ export function replaceState(state = getStateObj(), url = location.href) {
 	}
 }
 
+/**
+ * Watches for state updates broadcasted through the channel and applies them to the local state.
+ *
+ * @param {object} [options] - Optional options.
+ * @param {AbortSignal} [options.signal] - An AbortSignal to cancel the watcher.
+ */
 export function watchState({ signal } = {}) {
 	channel.addEventListener('message', event => {
 		if (

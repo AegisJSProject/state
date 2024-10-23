@@ -6,10 +6,12 @@ import { registerCallback } from '@aegisjsproject/core/callbackRegistry.js';
 import { EVENTS } from '@aegisjsproject/core/events.js';
 
 const STATE_CHANGED = 'aegis:state:changed';
-
 const [msg, setMessage] = manageState('msg', 'Hello, World!');
-const [list] = manageState('list', ['one', 'two', 'three']);
 const updateMessage = registerCallback('update:msg', ({ target }) => setMessage(target.value));
+
+const [list, setList] = manageState('list', [1]);
+const iter = Iterator.range(list.at(-1) + 1, Infinity);
+const pushItem = registerCallback('push:item', () => setList(list.concat(iter.next().value)));
 
 class StatefulElemenet extends AegisComponent {
 	constructor() {
@@ -23,8 +25,9 @@ class StatefulElemenet extends AegisComponent {
 						<summary>State Data</summary>
 						<pre><code id="state"></code></pre>
 					</details>
+					<button type="button" class="btn btn-primary" ${EVENTS.onClick}="${pushItem}">Add item</button>
 					<ol id="log" part="log"></ol>
-					<ul id="list">${Array.from(list, item => `<li>${item}</li>`)}
+					<ul id="list">${Array.from(list, item => `<li>${item}</li>`).join('\n')}
 				</div>
 			`,
 			styles: `#msg {
