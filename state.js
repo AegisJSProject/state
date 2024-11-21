@@ -1,10 +1,97 @@
-const stateRegistry = new Set();
+const stateRegistry = new Map();
 const channel = new BroadcastChannel('aegis:state_sync');
 const sender = crypto.randomUUID();
 const proxySymbol = Symbol('proxy');
+const updateSymbol = Symbol('aegis:state:update');
 let isChannelOpen = true;
 
+export const stateKey = 'aegisStateKey';
+export const stateAttr = 'aegisStateAttr';
+export const stateStyle = 'aegisStateStyle';
+export const stateKeyAttribute = 'data-aegis-state-key';
+export const stateAttrAttribute = 'data-aegis-state-attr';
+export const stateStyleAttribute = 'data-aegis-state-style';
+
 const _getState = (key, fallback = null) => history.state?.[key] ?? fallback;
+
+function $$(selector, base = document.body) {
+	const results = base.querySelectorAll(selector);
+	return base.matches(selector) ? [base, ...results] : Array.from(results);
+}
+
+async function _updateElement({ state = history.state ?? {} } = {}) {
+	const key = this.dataset.aegisStateKey;
+	const val = state?.[key];
+
+	await scheduler?.yield();
+
+	if (typeof this.dataset[stateAttr] === 'string') {
+		const attr = this.dataset[stateAttr];
+		const oldVal = this.getAttribute(attr);
+
+		if (typeof oldVal === 'string' && oldVal.startsWith('blob:')) {
+			URL.revokeObjectURL(oldVal);
+		}
+
+		if (typeof val === 'boolean') {
+			this.toggleAttribute(attr, val);
+		} else if (val === null || val === undefined) {
+			this.removeAttribute(attr);
+		} else if (val instanceof Blob) {
+			this.setAttribute(attr, URL.createObjectURL(val));
+		} else {
+			this.setAttribute(attr, val);
+		}
+	} else if (typeof this.dataset[stateStyle] === 'string') {
+		if (typeof val === 'undefined' || val === null || val === false) {
+			this.style.removeProperty(this.dataset[stateStyle]);
+		} else {
+			const prop = this.dataset[stateStyle];
+			console.log({ prop, val });
+			this.style.setProperty(this.dataset[stateStyle], val);
+		}
+	} else if (this instanceof HTMLInputElement || this instanceof HTMLSelectElement || this instanceof HTMLTextAreaElement) {
+		this.value = val;
+	} else {
+		this.textContent = val;
+	}
+}
+
+const domObserver = new MutationObserver(mutations => {
+	mutations.forEach(record => {
+		switch(record.type) {
+			case 'childList':
+				record.addedNodes.forEach(node => {
+					if (node.nodeType === Node.ELEMENT_NODE) {
+						$$(`[${stateKeyAttribute}]`, node.target).forEach(el => {
+							el[updateSymbol] = _updateElement.bind(el);
+							observeStateChanges(el[updateSymbol], el.dataset[stateKey]);
+						});
+					}
+				});
+
+				record.removedNodes.forEach(node => {
+					if (node.nodeType === Node.ELEMENT_NODE) {
+						$$(`[${stateKeyAttribute}]`, node.target).forEach(el => {
+							unobserveStateChanges(el[updateSymbol]);
+							delete el[updateSymbol];
+						});
+					}
+				});
+				break;
+
+			case 'attributes':
+				if (typeof record.oldValue === 'string') {
+					unobserveStateChanges(record.target[updateSymbol]);
+					delete record.target[updateSymbol];
+				} else if (typeof record.target.dataset[stateKey] === 'string') {
+					record.target[updateSymbol] = _updateElement.bind(record.target);
+					observeStateChanges(record.target[updateSymbol], record.target.dataset[stateKey]);
+				}
+				break;
+		}
+	});
+});
 
 function _getStateMessage(type, recipient, data = {}) {
 	return {
@@ -68,8 +155,8 @@ export async function notifyStateChange(diff) {
 		const state = Object.fromEntries(diff.map(key => [key, currState[key]]));
 
 		await Promise.allSettled(Array.from(
-			stateRegistry,
-			({ callback, observedStates }) => {
+			stateRegistry.entries(),
+			([callback, observedStates]) => {
 				if (observedStates.length === 0 || observedStates.some(state => diff.includes(state))) {
 					callback({ diff, state });
 				}
@@ -87,7 +174,7 @@ export async function notifyStateChange(diff) {
  */
 export function observeStateChanges(target, ...observedStates) {
 	if (target instanceof Function && ! stateRegistry.has(target)) {
-		stateRegistry.add({ callback: target, observedStates });
+		stateRegistry.set(target, observedStates);
 		return true;
 	} else {
 		return false;
@@ -104,15 +191,31 @@ export function observeStateChanges(target, ...observedStates) {
 export function getState(key, fallback = null) {
 	return new Proxy({
 		toString() {
-			return _getState(key, fallback).toString();
+			return _getState(key, fallback)?.toString() ?? '';
 		},
 		valueOf() {
 			const val = _getState(key, fallback);
 			return val?.valueOf instanceof Function ? val.valueOf() : val;
 		},
+		toJSON() {
+			return _getState(key, fallback);
+		},
 		[Symbol.toPrimitive](hint) {
 			const val = _getState(key, fallback);
-			return val?.[Symbol.toPrimitive] instanceof Function ? val[Symbol.toPrimitive](hint) : val;
+
+			if (typeof val === hint) {
+				return val;
+			} else if (hint === 'default' && typeof val !== 'object') {
+				return val;
+			} else if (val?.[Symbol.toPrimitive] instanceof Function) {
+				return val?.[Symbol.toPrimitive] instanceof Function ? val[Symbol.toPrimitive](hint) : val;
+			} else if (hint !== 'number' && val?.toString instanceof Function) {
+				return val.toString();
+			} else if (hint === 'number') {
+				return parseFloat(val);
+			} else {
+				return val;
+			}
 		},
 		[proxySymbol]: true,
 		[Symbol.toStringTag]: 'StateValue',
@@ -332,3 +435,118 @@ export function watchState({ signal } = {}) {
 		signal.addEventListener('abort', closeChannel, { once: true });
 	}
 };
+
+/**
+ * Watches for DOM mutations (added/removed nodes and attribute changes) for elements matching `[data-aegis-state-key]`.
+ * Matching elements register a callback to be updated on state changes
+ *
+ * @param {Element|ShadowRoot|string} target Root element to observe from
+ * @param {object} options
+ * @param {AbortSignal} [options.signal] Optional signal to disconnect the observer on abort
+ * @param {Element} [options.base] Base element to query from when `target` is a selector
+ * @throws {TypeError} If the `target` is not an Element, ShadowRoot, or a valid CSS selector.
+ * @throws {Error} If the provided `signal` is aborted.
+ */
+export function observeDOMState(target = document.body, { signal, base = document.body } = {}) {
+	if (signal instanceof AbortSignal && signal.aborted) {
+		throw signal.reason;
+	} else if (typeof target === 'string') {
+		observeDOMState(base.querySelector(target), { signal });
+	} else if (! (target instanceof Element || target instanceof ShadowRoot)) {
+		throw new TypeError('Target must be an element, selector, or shadow root.');
+	} else {
+		domObserver.observe(target, {
+			childList: true,
+			subtree: true,
+			attributeFilter: [stateKeyAttribute],
+			attributeOldValue: true,
+		});
+
+		$$(`[${stateKeyAttribute}]`).forEach(el => {
+			el[updateSymbol] = _updateElement.bind(el);
+			observeStateChanges(el[updateSymbol], el.dataset[stateKey]);
+			el[updateSymbol]({ state: history.state });
+		});
+
+		if (signal instanceof AbortSignal) {
+			signal.addEventListener('abort', () => domObserver.disconnect(), { once: true });
+		}
+	}
+}
+
+/**
+ * Binds a DOM element to a specific state key to be updated on state changes
+ *
+ * @param {Element|string} target Target element or a selector
+ * @param {string} key Name/key to observe
+ * @param {object} options
+ * @param {string} [options.attr] Optional attribute to bind state to
+ * @param {string} [options.style] Optional style property to bind state to
+ * @param {Element} [options.base] Base to query from when `target` is a selector
+ */
+export function bindState(target, key, { attr, style, base = document.body } = {}) {
+	if (typeof target === 'string') {
+		bindState(base.querySelector(target), key, { attr, style });
+	} else if (! (target instanceof Element)) {
+		throw new TypeError('Target must be an element or selector.');
+	} else if (typeof stateKey !== 'string' || stateKey.length === 0) {
+		throw new TypeError('State key must be a non-empty string.');
+	} else if (target instanceof HTMLElement) {
+		target.dataset[stateKey] = key;
+
+		if (typeof attr === 'string') {
+			target.dataset[stateAttr] = attr;
+		} else if (typeof style === 'string') {
+			target.dataset[stateStyle] = style;
+		}
+
+		requestAnimationFrame(() => _updateElement.call(target, { state: history.state ?? {}}));
+	} else if (target instanceof Element) {
+		target.setAttribute(stateKeyAttribute, key)
+
+		if (typeof attr === 'string') {
+			target.setAttribute(stateAttrAttribute, attr);
+		} else if (typeof style === 'string') {
+			target.setAttribute(stateStyleAttribute, style);
+		}
+
+		requestAnimationFrame(() => _updateElement.call(target, { state: history.state ?? {}}));
+	}
+}
+
+/**
+ * Creates and registers a callback on for given element (`target`) for state changes specified by `key`
+ *
+ * @param {Element|string} target Element or selector
+ * @param {string} key Name/value for key in state obejct
+ * @param {Function} handler The callback to register on for state changes
+ * @param {object} options
+ * @param {Element} [options.base=document.body] Base to query from when `target` is a selector
+ * @param {AbortSignal} [options.signal] Optional signal to unregister callback when aborted
+ * @returns {Function} The resulting callback, bound to the target Element
+ */
+export function createStateHandler(target, key, handler, { base = document.body, signal } = {}) {
+	if (signal instanceof AbortSignal && signal.aborted) {
+		throw signal.reason;
+	} else if (typeof target === 'string') {
+		return createStateHandler(base.querySelector(target), key, handler, {});
+	} else if (! (target instanceof Element)) {
+		throw new TypeError('Target must be an element or selector.');
+	} else if (typeof key !== 'string' || key.length === 0) {
+		throw new TypeError('State key must be a non-empty string.');
+	} else if (! (handler instanceof Function)) {
+		throw new TypeError('Callback must be a function.');
+	} else {
+		const callback = (function({ state = {} } = {}) {
+			return handler.call(this, state[key], this);
+		}).bind(target);
+
+		observeStateChanges(callback, key);
+
+		if (signal instanceof AbortSignal) {
+			signal.addEventListener('abort', () => unobserveStateChanges(callback), { once: true });
+		}
+
+		return callback;
+	}
+}
