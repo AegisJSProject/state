@@ -1,24 +1,7 @@
+import './shims.js';
 import { test, describe } from 'node:test';
 import  assert from 'node:assert';
 import { manageState, getState, closeChannel } from './state.js';
-
-const STATE_SYMBOL = Symbol('state:value');
-
-// Setup some globals for node
-globalThis.location = new URL('https://example.com');
-
-globalThis.history = {
-	[STATE_SYMBOL]: null,
-	get state() {
-		return this[STATE_SYMBOL];
-	},
-	replaceState(newState) {
-		this[STATE_SYMBOL] = Object.freeze(structuredClone(newState));
-	},
-	pushState(newState) {
-		this[STATE_SYMBOL] = Object.freeze(structuredClone(newState));
-	}
-};
 
 // Have to close channel because leaving it open would keep the process running.
 closeChannel();
