@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.3] - 2024-11-21
+
+### Added
+- "Reactivity" of elements (attributes, text, styles) via `data-aegis-state-*` sttributes & `MutationObserver`
+- `toJSON()` support of proxy objects via `getState()`
+
 ## [v1.0.2] - 2024-10-23
 
 ### Added
