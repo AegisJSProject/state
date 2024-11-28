@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Add event target and dispatch `change`  and `beforechange` events on state changes
+- Add support for `setState()` accepting functions
+- Add `changeHandler()` as callback to update state on `change` and `input` events
+
+### Fixed
+- Set default base as `document.documentElement` to supprt `<head>`
+- Fix linting errors and eslint config
+
 ## [v1.0.3] - 2024-11-21
 
 ### Added
