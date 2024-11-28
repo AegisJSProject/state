@@ -1,6 +1,6 @@
 {
   "name": "@aegisjsproject/state",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A simple state manager library",
   "keywords": [
     "aegis",

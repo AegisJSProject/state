@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.4] - 2024-11-27
+
 ### Added
 - Add event target and dispatch `change`  and `beforechange` events on state changes
 - Add support for `setState()` accepting functions
