@@ -5,16 +5,21 @@ const proxySymbol = Symbol('proxy');
 const updateSymbol = Symbol('aegis:state:update');
 let isChannelOpen = true;
 
+export const EVENT_TARGET = new EventTarget();
 export const stateKey = 'aegisStateKey';
 export const stateAttr = 'aegisStateAttr';
 export const stateStyle = 'aegisStateStyle';
+export const stateProperty = 'aegisStateProperty';
 export const stateKeyAttribute = 'data-aegis-state-key';
 export const stateAttrAttribute = 'data-aegis-state-attr';
+export const statePropertyAttr = 'data-aegis-state-property';
 export const stateStyleAttribute = 'data-aegis-state-style';
+export const changeEvent = 'change';
+export const beforeChangeEvent = 'beforechange';
 
 const _getState = (key, fallback = null) => history.state?.[key] ?? fallback;
 
-function $$(selector, base = document.body) {
+function $$(selector, base = document.documentElement) {
 	const results = base.querySelectorAll(selector);
 	return base.matches(selector) ? [base, ...results] : Array.from(results);
 }
@@ -42,12 +47,12 @@ async function _updateElement({ state = history.state ?? {} } = {}) {
 		} else {
 			this.setAttribute(attr, val);
 		}
+	} else if (typeof this.dataset[stateProperty] === 'string' && this.dataset[stateProperty] !== 'innerHTML') {
+		this[this.dataset[stateProperty]] = val;
 	} else if (typeof this.dataset[stateStyle] === 'string') {
 		if (typeof val === 'undefined' || val === null || val === false) {
 			this.style.removeProperty(this.dataset[stateStyle]);
 		} else {
-			const prop = this.dataset[stateStyle];
-			console.log({ prop, val });
 			this.style.setProperty(this.dataset[stateStyle], val);
 		}
 	} else if (this instanceof HTMLInputElement || this instanceof HTMLSelectElement || this instanceof HTMLTextAreaElement) {
@@ -306,14 +311,25 @@ export const hasState = key => key in getStateObj();
 /**
  * Sets a state value.
  *
- * @param {string} prop - The property name to set.
- * @param {*} value - The new value for the property.
+ * @param {string} key - The property name to set.
+ * @param {*} newValue - The new value for the property, or a function to call to update state
  */
-export function setState(prop, value) {
+export function setState(key, newValue) {
 	const state = getStateObj();
 
-	if (state[prop] !== value) {
-		replaceState({ ...getStateObj(), [prop]: value?.[proxySymbol] ? value.valueOf() : value }, '', location.href);
+	if (typeof newValue === 'function') {
+		updateState(key, newValue);
+	} else if (state[key] !== newValue) {
+		const detail = { key, oldValue: state[key], newValue };
+		const event = new CustomEvent(beforeChangeEvent, { cancelable: true, detail });
+
+		EVENT_TARGET.dispatchEvent(event);
+
+		if (! event.defaultPrevented) {
+			replaceState({ ...getStateObj(), [key]: newValue?.[proxySymbol] ? newValue.valueOf() : newValue }, '', location.href);
+
+			EVENT_TARGET.dispatchEvent(new CustomEvent(changeEvent, { detail }));
+		}
 	}
 };
 
@@ -324,7 +340,7 @@ export function setState(prop, value) {
  * @param {Function} cb - The callback function to update the value.
  * @returns {Promise<*>} - A promise that resolves to the updated state value.
  */
-export const updateState = async (key, cb) => await Promise.try(() => cb(_getState(key))).then(val => {
+export const updateState = async (key, cb) => await Promise.try(() => cb(_getState(key), key)).then(val => {
 	setState(key, val);
 	return val;
 });
@@ -440,14 +456,14 @@ export function watchState({ signal } = {}) {
  * Watches for DOM mutations (added/removed nodes and attribute changes) for elements matching `[data-aegis-state-key]`.
  * Matching elements register a callback to be updated on state changes
  *
- * @param {Element|ShadowRoot|string} target Root element to observe from
+ * @param {Element|ShadowRoot|string} [target=document.documentElement] Root element to observe from
  * @param {object} options
  * @param {AbortSignal} [options.signal] Optional signal to disconnect the observer on abort
- * @param {Element} [options.base] Base element to query from when `target` is a selector
+ * @param {Element} [options.base=document.documentElement] Base element to query from when `target` is a selector
  * @throws {TypeError} If the `target` is not an Element, ShadowRoot, or a valid CSS selector.
  * @throws {Error} If the provided `signal` is aborted.
  */
-export function observeDOMState(target = document.body, { signal, base = document.body } = {}) {
+export function observeDOMState(target = document.documentElement, { signal, base = document.documentElement } = {}) {
 	if (signal instanceof AbortSignal && signal.aborted) {
 		throw signal.reason;
 	} else if (typeof target === 'string') {
@@ -462,7 +478,7 @@ export function observeDOMState(target = document.body, { signal, base = documen
 			attributeOldValue: true,
 		});
 
-		$$(`[${stateKeyAttribute}]`).forEach(el => {
+		$$(`[${stateKeyAttribute}]`, target).forEach(el => {
 			el[updateSymbol] = _updateElement.bind(el);
 			observeStateChanges(el[updateSymbol], el.dataset[stateKey]);
 			el[updateSymbol]({ state: history.state });
@@ -482,7 +498,7 @@ export function observeDOMState(target = document.body, { signal, base = documen
  * @param {object} options
  * @param {string} [options.attr] Optional attribute to bind state to
  * @param {string} [options.style] Optional style property to bind state to
- * @param {Element} [options.base] Base to query from when `target` is a selector
+ * @param {Element} [options.base=document.body] Base to query from when `target` is a selector
  */
 export function bindState(target, key, { attr, style, base = document.body } = {}) {
 	if (typeof target === 'string') {
@@ -502,7 +518,7 @@ export function bindState(target, key, { attr, style, base = document.body } = {
 
 		requestAnimationFrame(() => _updateElement.call(target, { state: history.state ?? {}}));
 	} else if (target instanceof Element) {
-		target.setAttribute(stateKeyAttribute, key)
+		target.setAttribute(stateKeyAttribute, key);
 
 		if (typeof attr === 'string') {
 			target.setAttribute(stateAttrAttribute, attr);
@@ -525,7 +541,7 @@ export function bindState(target, key, { attr, style, base = document.body } = {
  * @param {AbortSignal} [options.signal] Optional signal to unregister callback when aborted
  * @returns {Function} The resulting callback, bound to the target Element
  */
-export function createStateHandler(target, key, handler, { base = document.body, signal } = {}) {
+export function createStateHandler(target, key, handler, { base = document.documentElement, signal } = {}) {
 	if (signal instanceof AbortSignal && signal.aborted) {
 		throw signal.reason;
 	} else if (typeof target === 'string') {
@@ -549,4 +565,83 @@ export function createStateHandler(target, key, handler, { base = document.body,
 
 		return callback;
 	}
+}
+
+/**
+ * A change or input handler for inputs, updating state to new values
+ *
+ * @param {Event} event A change or input event
+ * @throws {TypeError} If the event target is not an HTMLElement
+ */
+export function changeHandler({ target, type }) {
+	if (! (target instanceof HTMLElement)) {
+		throw new TypeError(`Event ${type} target must be an HTMLElement.`);
+	} else if (target instanceof HTMLSelectElement) {
+		setState(target.name, target.multiple ? Array.from(target.selectedOptions, opt => opt.value) : target.value);
+	} else if (target instanceof HTMLInputElement) {
+		switch(target.type) {
+			case 'checkbox': {
+				const checkboxes = Array.from(target.form?.elements ?? [target]).filter(input => input.name === target.name && input.type === 'checkbox');
+
+				if (checkboxes.length === 1) {
+					setState(target.name, target.value === 'on' ? target.checked : target.value);
+				} else {
+					setState(target.name, Array.from(checkboxes).filter(item => item.checked).map(item => item.value));
+				}
+			}
+				break;
+
+			case 'number':
+			case 'range':
+				setState(target.name, target.valueAsNumber);
+				break;
+
+			case 'date':
+				setState(target.name, target.valueAsDate?.toISOString()?.split('T')?.at(0));
+				break;
+
+			case 'file':
+				setState(target.name, target.multiple ? Array.from(target.files) : target.files.item(0));
+				break;
+
+			case 'datetime-local':
+				setState(target.name, target.valueAsDate);
+				break;
+
+			default:
+				setState(target.name, target.value);
+		}
+	} else if (target instanceof HTMLTextAreaElement) {
+		setState(target.name, target.value);
+	} else if (target.constructor.formAssociated) {
+		setState(target.name, target.value);
+	} else {
+		throw new TypeError(`Event ${type} target is not a valid form element.`);
+	}
+}
+
+/**
+ * Adds an event listener for a `change` event on state.
+ *
+ * @param {Function} callback - The callback function to handle the `change` event.
+ * @param {object} [options] - Optional configuration object to customize the listener behavior.
+ * @param {AbortSignal} [options.signal] - An optional `AbortSignal` object that allows you to cancel the event listener (useful for cleanup).
+ * @param {boolean} [options.once=false] - If `true`, the listener will be invoked at most once and then removed after the first invocation.
+ * @param {boolean} [options.passive=false] - If `true`, the listener will never call `preventDefault()`, improving performance for some types of events (e.g., scrolling).
+ */
+export function onStateChange(callback, { signal, once = false, passive = false } = {}) {
+	EVENT_TARGET.addEventListener(changeEvent, callback, { signal, once, passive });
+}
+
+/**
+ * Adds an event listener for a cancelable `beforechange` event on state
+ *
+ * @param {Function} callback - The callback function to handle the `beforechange` event.
+ * @param {object} [options] - Optional configuration object to customize the listener behavior.
+ * @param {AbortSignal} [options.signal] - An optional `AbortSignal` object that allows you to cancel the event listener (useful for cleanup).
+ * @param {boolean} [options.once=false] - If `true`, the listener will be invoked at most once and then removed after the first invocation.
+ * @param {boolean} [options.passive=false] - If `true`, the listener will never call `preventDefault()`, improving performance for some types of events (e.g., scrolling).
+ */
+export function onBeforeStateChange(callback, { signal, once = false, passive = false } = {}) {
+	EVENT_TARGET.addEventListener(beforeChangeEvent, callback, { signal, once, passive });
 }
