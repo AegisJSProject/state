@@ -1,6 +1,6 @@
 {
   "name": "@aegisjsproject/state",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A simple state manager library",
   "keywords": [
     "aegis",
@@ -84,7 +84,7 @@
   "homepage": "https://github.com/AegisJSProject/state#readme",
   "devDependencies": {
     "@aegisjsproject/component": "^0.1.4",
-    "@aegisjsproject/core": "^0.2.19",
+    "@aegisjsproject/core": "^0.2.21",
     "@aegisjsproject/styles": "^0.2.3",
     "@rollup/plugin-terser": "^0.4.4",
     "@shgysk8zer0/eslint-config": "^1.0.1",
