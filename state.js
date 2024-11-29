@@ -326,7 +326,7 @@ export function setState(key, newValue) {
 		EVENT_TARGET.dispatchEvent(event);
 
 		if (! event.defaultPrevented) {
-			replaceState({ ...getStateObj(), [key]: newValue?.[proxySymbol] ? newValue.valueOf() : newValue }, '', location.href);
+			replaceState({ ...getStateObj(), [key]: newValue?.[proxySymbol] ? newValue.valueOf() : newValue }, location.href);
 
 			EVENT_TARGET.dispatchEvent(new CustomEvent(changeEvent, { detail }));
 		}

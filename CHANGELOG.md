@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.5] - 2024-11-28
+
+### Fixed
+- Fix bug in `setState()` where URL was incorrectly set to `""` when calling `replaceState()`
+
 ## [v1.0.4] - 2024-11-27
 
 ### Added
