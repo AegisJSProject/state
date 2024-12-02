@@ -312,12 +312,15 @@ export const hasState = key => key in getStateObj();
  * Sets a state value.
  *
  * @param {string} key - The property name to set.
- * @param {*} newValue - The new value for the property, or a function to call to update state
+ * @param {*} newValue - The new value for the property, or a function to call to update
+ * @throws {TypeError} If state is not a string or has a length of 0
  */
 export function setState(key, newValue) {
 	const state = getStateObj();
 
-	if (typeof newValue === 'function') {
+	if (typeof key !== 'string' || key.length === 0) {
+		throw new TypeError('Invalid key.');
+	} else if (typeof newValue === 'function') {
 		updateState(key, newValue);
 	} else if (state[key] !== newValue) {
 		const detail = { key, oldValue: state[key], newValue };
@@ -573,15 +576,23 @@ export function createStateHandler(target, key, handler, { base = document.docum
  * @param {Event} event A change or input event
  * @throws {TypeError} If the event target is not an HTMLElement
  */
-export function changeHandler({ target, type }) {
+export function changeHandler({ target, currentTarget, type }) {
 	if (! (target instanceof HTMLElement)) {
 		throw new TypeError(`Event ${type} target must be an HTMLElement.`);
+	} else if (target.isContentEditable && typeof target.dataset.name === 'string' && target.dataset.name.length !== 0) {
+		setState(target.dataset.name, target.textContent);
+	} else if (typeof target.name !== 'string' || target.name.length === 0) {
+		// Remove event listener if event target is the element the listener was set on
+		if (target.isSameNode(currentTarget)) {
+			target.removeEventListener(type, changeHandler);
+		}
 	} else if (target instanceof HTMLSelectElement) {
 		setState(target.name, target.multiple ? Array.from(target.selectedOptions, opt => opt.value) : target.value);
 	} else if (target instanceof HTMLInputElement) {
 		switch(target.type) {
 			case 'checkbox': {
-				const checkboxes = Array.from(target.form?.elements ?? [target]).filter(input => input.name === target.name && input.type === 'checkbox');
+				const checkboxes = Array.from(target.form?.elements ?? [target])
+					.filter(input => input.name === target.name && input.type === 'checkbox');
 
 				if (checkboxes.length === 1) {
 					setState(target.name, target.value === 'on' ? target.checked : target.value);
@@ -589,6 +600,15 @@ export function changeHandler({ target, type }) {
 					setState(target.name, Array.from(checkboxes).filter(item => item.checked).map(item => item.value));
 				}
 			}
+				break;
+
+			case 'radio':
+				setState(
+					target.name,
+					Array.from(target.form?.elements ?? [target])
+						.filter(input => input.name === target.name && input.checked)
+						.find(input => input.value)?.value
+				);
 				break;
 
 			case 'number':

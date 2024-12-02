@@ -7,10 +7,25 @@ import { html } from '@aegisjsproject/core/parsers/html.js';
 import { AegisComponent } from '@aegisjsproject/component/base.js';
 import { SYMBOLS, TRIGGERS } from '@aegisjsproject/component/consts.js';
 import { registerCallback, observeEvents } from '@aegisjsproject/callback-registry/callbackRegistry.js';
-import { onClick, onChange, onClose } from '@aegisjsproject/callback-registry/events.js';
+import { onClick, onChange, onClose, onInput } from '@aegisjsproject/callback-registry/events.js';
+
+function debounce(callback, delay = 100, { thisArg } = {}) {
+	let timeout = NaN;
+
+	return function(...args) {
+		if (! Number.isNaN(timeout)) {
+			clearTimeout(timeout);
+		}
+
+		setTimeout(() => {
+			callback.apply(thisArg, args);
+			timeout = NaN;
+		}, delay);
+	};
+}
 
 const STATE_CHANGED = 'aegis:state:changed';
-const changeHandler = registerCallback('aegis:change', change);
+const changeHandler = registerCallback('aegis:change', debounce(change));
 const [msg, setMessage] = manageState('msg', 'Hello, World!');
 const [list, setList] = manageState('list', [1]);
 const [hidden, setHidden] = manageState('hidden', false);
@@ -96,6 +111,22 @@ document.body.append(html`
 	<button type="button" ${onClick}="${() => setOpen(true)}" class="btn btn-system-accent">Show Modal</button>
 	<input type="checkbox" name="open" ${onChange}="${changeHandler}" ${stateKeyAttribute}="open" ${statePropertyAttr}="checked" />
 	<input type="file" accept="image/*" name="icon" ${onChange}="${changeHandler}" />
+	<input type="text" ${onChange}="${changeHandler}" />
+	<div contenteditable="true" data-name="nonInput" ${onInput}="${changeHandler}">${history.state?.nonInput ?? 'Lorem Ipsum!'}</div>
+	<div ${onChange}="${changeHandler}">
+		<label>
+			<span>One</span>
+			<input type="radio" name="radio" value="1" />
+		</label>
+		<label>
+			<span>Two</span>
+			<input type="radio" name="radio" value="2" />
+		</label>
+		<label>
+			<span>Three</span>
+			<input type="radio" name="radio" value="3" />
+		</label>
+	</div>
 	<dialog id="test-dialog" ${onClose}="${() => setOpen(false)}">
 		<div>
 			<button type="button" ${onClick}="${() => setOpen(false)}" class="btn btn-rejct btn-danger">Close</button>

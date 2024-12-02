@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.6] - 2024-12-02
+
+### Fixed
+- Add support for `radio` inputs and `contenteditable` elements in `changeHandler`
+- Do not update state without a `name` in `changeHandler`
+
 ## [v1.0.5] - 2024-11-28
 
 ### Fixed
