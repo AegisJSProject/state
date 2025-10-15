@@ -21,7 +21,7 @@ const _getState = (key, fallback = null) => history.state?.[key] ?? fallback;
 
 function $$(selector, base = document.documentElement) {
 	const results = base.querySelectorAll(selector);
-	return base.matches(selector) ? [base, ...results] : Array.from(results);
+	return base.matches instanceof Function && base.matches(selector) ? [base, ...results] : Array.from(results);
 }
 
 async function _updateElement({ state = history.state ?? {} } = {}) {

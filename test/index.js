@@ -32,6 +32,7 @@ const [hidden, setHidden] = manageState('hidden', false);
 const [open, setOpen] = manageState('open', false);
 const [fill, setFill] = manageState('fill', '#ff0000');
 const [bg, setBg] = manageState('bg', 'inherit');
+const [content, setContent] = manageState('content', 'Bacon Ipsum');
 const iter = Iterator.range(list.at(-1) + 1, Infinity);
 const pushItem = registerCallback('push:item', () => setList(list.concat(iter.next().value)));
 registerCallback('state:fill:set', () => setFill(`#${crypto.getRandomValues(new Uint8Array(3)).toHex()}`));
@@ -106,6 +107,7 @@ class StatefulElemenet extends AegisComponent {
 	}
 }
 document.body.append(html`
+	<button type="button" popovertarget="popover" popovertargetaction="show">Show Popover</button>
 	<p ${stateKey}="msg" ${statePropertyAttr}="innerHTML">${msg}</p>
 	<button type="button" ${onClick}="${() => setHidden((state = hidden.valueOf()) => ! state)}" class="btn btn-system-accent">Toggle</button>
 	<button type="button" ${onClick}="${() => setOpen(true)}" class="btn btn-system-accent">Show Modal</button>
@@ -141,6 +143,19 @@ document.body.append(html`
 	</dialog>
 `);
 
+const popover = html`
+	<div popover="auto" id="popover">
+		<template shadowrootmode="open">
+			<button type="button" popovertarget="popover" popovertargetaction="hide" part="button">Close</button>
+			<div part="content">
+				<slot name="content">No Content</slot>
+			</div>
+			<p contenteditable="true" ${onInput}="${({ target }) => setContent(target.textContent)}">${content}</p>
+		</template>
+		<p ${stateKeyAttribute}="content" slot="content">${content}</p>
+	</div>
+`;
+
 const dialog = document.getElementById('test-dialog');
 StatefulElemenet.register('stateful-el');
 document.body.dataset[stateKey] = 'bg';
@@ -148,10 +163,14 @@ document.body.dataset[stateStyle] = 'background-color';
 watchState();
 observeEvents(document.documentElement);
 observeDOMState(document.documentElement);
+observeEvents(popover.firstElementChild.shadowRoot);
+observeDOMState(popover.firstChild.shadowRoot);
 bindState('#root', 'hidden', { attr: 'hidden' });
 bindState('#img-result', 'file', { attr: 'src' });
 createStateHandler('#test-dialog', 'open', (open, dialog) => open ? dialog.showModal() : dialog.close());
+// popover.firstElementChild.shadowRoot.adoptedStyleSheets =
 
+document.body.append(popover);
 if (open.valueOf()) {
 	dialog.showModal();
 }

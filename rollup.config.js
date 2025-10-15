@@ -9,5 +9,6 @@ export default [{
 		file: 'state.mjs',
 		format: 'esm',
 		plugins: [terser()],
+		sourcemap: true,
 	}]
 }];
