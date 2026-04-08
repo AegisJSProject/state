@@ -85,7 +85,7 @@
   "devDependencies": {
     "@aegisjsproject/component": "^0.1.4",
     "@aegisjsproject/core": "^0.2.21",
-    "@aegisjsproject/styles": "^0.2.3",
+    "@aegisjsproject/styles": "^0.3.0",
     "@rollup/plugin-terser": "^1.0.0",
     "@shgysk8zer0/eslint-config": "^1.0.1",
     "eslint": "^10.0.0",
