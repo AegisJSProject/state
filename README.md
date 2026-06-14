@@ -27,7 +27,7 @@ for easy integration into web applications and synchronizes state across tabs or
 
 - [Code of Conduct](./.github/CODE_OF_CONDUCT.md)
 - [Contributing](./.github/CONTRIBUTING.md)
-<!-- - [Security Policy](./.github/SECURITY.md) -->
+- [Security Policy](./.github/SECURITY.md)
 
 ## Features
 - **Session persistence:** State persists across navigation, staying in sync with the browser's session history.
